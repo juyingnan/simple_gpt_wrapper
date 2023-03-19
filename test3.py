@@ -1,8 +1,9 @@
 import sys
 import json
 from PyQt5.QtWidgets import QWidget, QApplication, QMainWindow, QPushButton, QVBoxLayout, QHBoxLayout, QTextEdit, \
-    QSplitter, QComboBox, QLabel
+    QSplitter, QComboBox, QLabel, QSlider, QFrame
 from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtCore import Qt, pyqtSignal
 
 # Note: The openai-python library support for Azure OpenAI is in preview.
 # import os
@@ -23,6 +24,7 @@ openai_key = config_data['openai_key']
 default_model = config_data['default_model']
 default_callback_num = config_data['default_callback_num']
 model_names = config_data['model_names']
+default_temperature = config_data['temperature']
 
 user_input_color = QColor(0, 128, 0)  # green
 ai_response_color = QColor(0, 0, 255)  # blue
@@ -44,6 +46,21 @@ system_message_template = "<|im_start|>system\n{}\n<|im_end|>"
 system_message_instance = system_message_template.format("You are an AI assistant that helps people find information.")
 
 
+# build an input text box which uses enter to send / shift+enter to change line
+class MyTextEdit(QTextEdit):
+    enter_pressed = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Return and not event.modifiers() & Qt.ShiftModifier:
+            # Emit the enter_pressed signal
+            self.enter_pressed.emit()
+        else:
+            # Allow normal text editing behavior
+            super().keyPressEvent(event)
+
 # create the main application window
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -51,6 +68,7 @@ class MainWindow(QMainWindow):
         # initialize the parameters
         self.model = default_model
         self.callback_num = default_callback_num
+        self.temperature = default_temperature
 
         self.setWindowTitle("GPT Chat")
         self.resize(1000, 1000)
@@ -63,10 +81,11 @@ class MainWindow(QMainWindow):
         self.chat_display.setFont(font)
 
         # create the user input widget
-        self.user_input = QTextEdit()
+        self.user_input = MyTextEdit()
         # self.user_input.setFixedSize(400, 300)
         self.user_input.setFont(font)
         self.user_input.setAcceptRichText(False)
+        self.user_input.enter_pressed.connect(self.on_user_input)
         # self.user_input.returnPressed.connect(self.on_user_input)
 
         # create vertical splitter
@@ -107,17 +126,36 @@ class MainWindow(QMainWindow):
         self.label_history = QLabel(self)
         self.label_history.setText(f"History length:")
 
+        # add a separator
+        self.separator = QFrame(self)
+        self.separator.setFrameShape(QFrame.HLine)
+        self.separator.setFrameShadow(QFrame.Sunken)
+
+        # create a slider to set temperature from 0.0 to 1.0
+        self.label_temperature = QLabel(self)
+        self.label_temperature.setText(f"temperature: {self.temperature}")
+        self.slider_temperature = QSlider(Qt.Horizontal)
+        self.slider_temperature.setRange(0, 100)
+        self.slider_temperature.setValue(int(self.temperature * 100))
+        self.slider_temperature.setSingleStep(5)
+        self.slider_temperature.setPageStep(10)
+        self.slider_temperature.valueChanged.connect(self.onTemperatureValueChanged)
+
         # create the layout
         layout = QVBoxLayout()
         layout.addWidget(splitter)
         # layout.addWidget(self.chat_display)
+        layout.addWidget(self.submit_button)
+        layout.addWidget(self.separator)
+        # below are parameter controls
         input_layout = QHBoxLayout()
         # input_layout.addWidget(self.user_input)
-        input_layout.addWidget(self.submit_button)
         input_layout.addWidget(self.label_model)
         input_layout.addWidget(self.comboBox_model)
         input_layout.addWidget(self.label_history)
         input_layout.addWidget(self.comboBox_history)
+        input_layout.addWidget(self.label_temperature)
+        input_layout.addWidget(self.slider_temperature)
         input_layout.addWidget(self.clear_button)
         layout.addLayout(input_layout)
 
@@ -136,6 +174,7 @@ class MainWindow(QMainWindow):
         # call the selected GPT model based on the user's selection
         self.model = text
         # self.label_model.setText(f"Selected model: {text}")
+        self.chat_display.setTextColor(system_message_color)
         self.chat_display.append(f"Current model changed to: {text}")
 
     # dropdown menu activated function - model selection
@@ -143,11 +182,18 @@ class MainWindow(QMainWindow):
         # call the selected GPT model based on the user's selection
         self.callback_num = int(text)
         # self.label_model.setText(f"Selected model: {text}")
+        self.chat_display.setTextColor(system_message_color)
         self.chat_display.append(f"Current history changed to: {text}")
+
+    def onTemperatureValueChanged(self, value):
+        self.temperature = float(value) / 100
+        self.label_temperature.setText(f"temperature: {self.temperature:.2f}")
+        # self.chat_display.append(f"Current temperature changed to: {self.temperature}")
 
     def clear_history(self):
         self.messages = []
         self.chat_display.clear()
+        self.chat_display.setTextColor(system_message_color)
         self.chat_display.append(f"Chat history cleared. You can begin a new chat session.")
 
     # function to handle user input
@@ -160,7 +206,7 @@ class MainWindow(QMainWindow):
         # update the chat display widget
         self.chat_display.setTextColor(user_input_color)
         self.chat_display.append("You: " + user_input)
-        self.chat_display.setTextColor(system_message_color)
+        # self.chat_display.setTextColor(system_message_color)
 
         # add the user message to the messages list
         self.messages.append({"sender": "user", "text": user_input})
@@ -170,7 +216,7 @@ class MainWindow(QMainWindow):
         response = openai.Completion.create(
             engine=self.model,
             prompt=create_prompt(system_message_instance, self.messages),
-            temperature=0.5,
+            temperature=self.temperature,
             max_tokens=1000,
             top_p=0.95,
             frequency_penalty=0,
@@ -189,6 +235,7 @@ class MainWindow(QMainWindow):
         # update the chat display widget
         self.chat_display.setTextColor(ai_response_color)
         self.chat_display.append("AI: " + ai_response)
+
         self.chat_display.setTextColor(system_message_color)
         self.chat_display.append("\n--------\n")
 
