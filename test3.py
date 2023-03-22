@@ -4,10 +4,9 @@ from PyQt5.QtWidgets import QWidget, QApplication, QMainWindow, QPushButton, QVB
     QSplitter, QComboBox, QLabel, QSlider, QFrame, QLineEdit
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtCore import Qt, pyqtSignal
-
-# Note: The openai-python library support for Azure OpenAI is in preview.
-# import os
+from transformers import GPT2Tokenizer
 import openai
+import tiktoken
 
 
 def read_config_file(config_file_path):
@@ -16,14 +15,17 @@ def read_config_file(config_file_path):
 
 
 config_data = read_config_file('config.json')
+credential_data = read_config_file('credential.json')
 openai.api_type = config_data['api_type']
-openai.api_base = config_data['endpoint']
-openai.api_version = config_data['api_version']
-openai.api_key = config_data['api_key']
-openai_key = config_data['openai_key']
+openai.api_base = credential_data['endpoint']
+openai.api_version = credential_data['api_version']
+openai.api_key = credential_data['api_key']
+openai_key = credential_data['openai_key']
 default_model = config_data['default_model']
 default_callback_num = config_data['default_callback_num']
 model_names = config_data['model_names']
+model_prices = config_data['model_prices']
+model_types = config_data['model_types']
 default_temperature = config_data['temperature']
 
 user_input_color = QColor(0, 128, 0)  # green
@@ -60,11 +62,12 @@ class MyTextEdit(QTextEdit):
 
 # create the main application window
 class MainWindow(QMainWindow):
-    # noinspection PyUnresolvedReferences
     def __init__(self):
         super().__init__()
         # initialize the parameters
         self.model = default_model
+        self.model_price = model_prices[self.model]
+        self.model_type = model_types[self.model] if self.model in model_types else self.model
         self.callback_num = default_callback_num
         self.temperature = default_temperature
         # defining the system message
@@ -72,6 +75,9 @@ class MainWindow(QMainWindow):
         self.system_message_content = "You are an AI assistant that helps people find information."
         self.system_message_instance = self.system_message_template.format(self.system_message_content)
         self.prefix_message = ""
+        self.token_count = 0
+        self.price = 0.0
+        self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2-medium")
 
         self.setWindowTitle("GPT Chat")
         self.resize(1000, 1000)
@@ -82,12 +88,14 @@ class MainWindow(QMainWindow):
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
         self.chat_display.setFont(font)
+        self.chat_display.append(f"Default model is: {self.model} | Price: ${self.model_price} / 1000 tokens")
 
         # create the user input widget
         self.user_input = MyTextEdit()
         # self.user_input.setFixedSize(400, 300)
         self.user_input.setFont(font)
         self.user_input.setAcceptRichText(False)
+        # noinspection PyUnresolvedReferences
         self.user_input.enter_pressed.connect(self.on_user_input)
         # self.user_input.returnPressed.connect(self.on_user_input)
 
@@ -161,6 +169,10 @@ class MainWindow(QMainWindow):
         self.button_update_prefix_message = QPushButton('Update', self)
         self.button_update_prefix_message.clicked.connect(self.update_prefix_message)
 
+        # pricing label
+        self.label_last_message_token = QLabel("Last Message token: 0 / 0 (0 / 0)", self)
+        self.label_last_message_price = QLabel("Last Message price: 0.000 / 0.000 (0.000 / 0.000)", self)
+
         # create the layout
         # chat and submit button
         layout = QVBoxLayout()
@@ -186,11 +198,16 @@ class MainWindow(QMainWindow):
         input_layout3.addWidget(self.label_prefix_message)
         input_layout3.addWidget(self.textbox_prefix_message)
         input_layout3.addWidget(self.button_update_prefix_message)
+        # pricing message
+        input_layout4 = QHBoxLayout()
+        input_layout4.addWidget(self.label_last_message_token)
+        input_layout4.addWidget(self.label_last_message_price)
         # all layouts
         layout.addLayout(input_layout)
         layout.addWidget(self.separator2)
         layout.addLayout(input_layout2)
         layout.addLayout(input_layout3)
+        layout.addLayout(input_layout4)
 
         # create the widget to hold the layout
         widget = QWidget()
@@ -206,9 +223,11 @@ class MainWindow(QMainWindow):
     def on_model_selection_activated(self, text):
         # call the selected GPT model based on the user's selection
         self.model = text
+        self.model_type = model_types[self.model] if self.model in model_types else self.model
+        self.price = model_prices[self.model]
         # self.label_model.setText(f"Selected model: {text}")
         self.chat_display.setTextColor(system_message_color)
-        self.chat_display.append(f"Current model changed to: {text}")
+        self.chat_display.append(f"Current model changed to: {self.model} | Price: ${self.model_price} / 1000 tokens")
 
     # dropdown menu activated function - model selection
     def on_history_length_selection_activated(self, text):
@@ -247,6 +266,21 @@ class MainWindow(QMainWindow):
             # if history > 0, keep callback_num * 2 messages (human + AI)
             self.messages = self.messages[-trim_limit:] if self.callback_num > 0 else []
 
+    def calculate_token(self, prompt_text, response_text):
+        prompt_tokens = len(self.tokenizer.encode(prompt_text))
+        generated_tokens = len(self.tokenizer.encode(response_text))
+        return prompt_tokens + generated_tokens
+
+    def calculate_token2(self, prompt_text, response_text):
+        encoding = tiktoken.encoding_for_model(self.model_type)
+
+        prompt_tokens = len(encoding.encode(prompt_text))
+        generated_tokens = len(encoding.encode(response_text))
+        return prompt_tokens + generated_tokens
+
+    def calculate_prices(self, token_count):
+        return self.model_price * token_count / 1000.0
+
     # function to handle user input
     def on_user_input(self):
         # get the user input
@@ -266,9 +300,10 @@ class MainWindow(QMainWindow):
         print(user_input)
 
         # generate the AI response
+        current_prompt = create_prompt(self.system_message_instance, self.messages)
         response = openai.Completion.create(
             engine=self.model,
-            prompt=create_prompt(self.system_message_instance, self.messages),
+            prompt=current_prompt,
             temperature=self.temperature,
             max_tokens=1000,
             top_p=0.95,
@@ -291,6 +326,18 @@ class MainWindow(QMainWindow):
 
         self.chat_display.setTextColor(system_message_color)
         self.chat_display.append("\n--------\n")
+
+        # calculate token and price
+        last_token_count = self.calculate_token2(current_prompt, response.choices[0].text)
+        last_price = self.calculate_prices(last_token_count)
+
+        # update price message
+        self.token_count += last_token_count
+        self.price += last_price
+        self.label_last_message_token.setText(f"Last Message token: {last_token_count} / {self.token_count}")
+        self.label_last_message_price.setText(f"Last Message token: {last_price:.4f} / {self.price:.4f}")
+        print(f"Last token: {last_token_count} / {self.token_count}  "
+              f"|| Last Price: {last_price:.4f} / {self.price:.4f}")
 
 
 # create the application
