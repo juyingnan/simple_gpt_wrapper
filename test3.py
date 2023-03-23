@@ -1,12 +1,14 @@
 import sys
 import json
+import openai
+import tiktoken
 from PyQt5.QtWidgets import QWidget, QApplication, QMainWindow, QPushButton, QVBoxLayout, QHBoxLayout, QTextEdit, \
     QSplitter, QComboBox, QLabel, QSlider, QFrame, QLineEdit
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtCore import Qt, pyqtSignal
-from transformers import GPT2Tokenizer
-import openai
-import tiktoken
+
+
+# from transformers import GPT2Tokenizer
 
 
 def read_config_file(config_file_path):
@@ -27,10 +29,6 @@ model_names = config_data['model_names']
 model_prices = config_data['model_prices']
 model_types = config_data['model_types']
 default_temperature = config_data['temperature']
-
-user_input_color = QColor(0, 128, 0)  # green
-ai_response_color = QColor(0, 0, 255)  # blue
-system_message_color = QColor(0, 0, 0)  # black
 
 
 # defining a function to create the prompt from the system message and the messages
@@ -77,7 +75,11 @@ class MainWindow(QMainWindow):
         self.prefix_message = ""
         self.token_count = 0
         self.price = 0.0
-        self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2-medium")
+        # self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2-medium")
+        self.tokenizer = None
+        self.user_input_color = QColor(0, 128, 0)  # green
+        self.ai_response_color = QColor(0, 0, 255)  # blue
+        self.system_message_color = QColor(0, 0, 0)  # black
 
         self.setWindowTitle("GPT Chat")
         self.resize(1000, 1000)
@@ -134,7 +136,7 @@ class MainWindow(QMainWindow):
         self.comboBox_history = QComboBox(self)
         for i in range(11):
             self.comboBox_history.addItem(str(i))
-        self.comboBox_history.addItem(str(999))
+        # self.comboBox_history.addItem(str(999))
         self.comboBox_history.setCurrentIndex(self.callback_num)
         self.comboBox_history.activated[str].connect(self.on_history_length_selection_activated)
 
@@ -219,23 +221,25 @@ class MainWindow(QMainWindow):
         # initialize the messages list
         self.messages = []
 
+    def append_message(self, message, color=None):
+        if color is None:
+            color = self.system_message_color
+        self.chat_display.setTextColor(color)
+        self.chat_display.append(message)
+
     # dropdown menu activated function - model selection
     def on_model_selection_activated(self, text):
         # call the selected GPT model based on the user's selection
         self.model = text
         self.model_type = model_types[self.model] if self.model in model_types else self.model
-        self.price = model_prices[self.model]
-        # self.label_model.setText(f"Selected model: {text}")
-        self.chat_display.setTextColor(system_message_color)
-        self.chat_display.append(f"Current model changed to: {self.model} | Price: ${self.model_price} / 1000 tokens")
+        self.model_price = model_prices[self.model]
+        self.append_message(f"Current model changed to: {self.model} | Price: ${self.model_price} / 1000 tokens")
 
     # dropdown menu activated function - model selection
     def on_history_length_selection_activated(self, text):
         # call the selected GPT model based on the user's selection
         self.callback_num = int(text)
-        # self.label_model.setText(f"Selected model: {text}")
-        self.chat_display.setTextColor(system_message_color)
-        self.chat_display.append(f"Current history changed to: {text}")
+        self.append_message(f"Current history changed to: {text}")
         # trim message list on limit changed
         self.trim_message_list(self.callback_num * 2)
         print("message length: ", len(self.messages), "\thistory: ", self.callback_num)
@@ -248,8 +252,7 @@ class MainWindow(QMainWindow):
     def clear_history(self):
         self.messages = []
         self.chat_display.clear()
-        self.chat_display.setTextColor(system_message_color)
-        self.chat_display.append(f"Chat history cleared. You can begin a new chat session.")
+        self.append_message(f"Chat history cleared. You can begin a new chat session.")
 
     def update_system_message(self):
         self.system_message_content = self.textbox_system_message.text()
@@ -291,16 +294,17 @@ class MainWindow(QMainWindow):
         # clear the user input widget
         self.user_input.setText("")
         # update the chat display widget
-        self.chat_display.setTextColor(user_input_color)
-        self.chat_display.append("You: " + user_input)
-        # self.chat_display.setTextColor(system_message_color)
+        self.append_message("You: " + user_input, self.user_input_color)
 
         # add the user message to the messages list
         self.messages.append({"sender": "user", "text": user_input})
-        print(user_input)
+        print(f"Q: ", user_input.replace('\n', ''))
 
         # generate the AI response
-        current_prompt = create_prompt(self.system_message_instance, self.messages)
+        current_prompt = create_prompt(self.system_message_instance,
+                                       self.messages if len(self.messages) < (self.callback_num * 2 + 1)
+                                       else self.messages[-(self.callback_num * 2 + 1):])
+        print(f"PROMPT: ", current_prompt.replace('\n', ''))
         response = openai.Completion.create(
             engine=self.model,
             prompt=current_prompt,
@@ -312,20 +316,16 @@ class MainWindow(QMainWindow):
             stop=["<|im_end|>"])
 
         ai_response = response.choices[0].text.strip()
-        print(ai_response)
+        print(f"A: ", ai_response.replace('\n', ''))
 
         # add the AI response to the messages list
         self.messages.append({"sender": "assistant", "text": ai_response})
-        print(self.messages)
-        self.trim_message_list(self.callback_num * 2)
+        self.trim_message_list(self.callback_num * 2 * 10)  # prevent a too long list
         print("message length: ", len(self.messages), "\thistory: ", self.callback_num)
 
         # update the chat display widget
-        self.chat_display.setTextColor(ai_response_color)
-        self.chat_display.append("AI: " + ai_response)
-
-        self.chat_display.setTextColor(system_message_color)
-        self.chat_display.append("\n--------\n")
+        self.append_message("AI: " + ai_response, self.ai_response_color)
+        self.append_message("\n--------\n", self.system_message_color)
 
         # calculate token and price
         last_token_count = self.calculate_token2(current_prompt, ai_response)
@@ -338,6 +338,7 @@ class MainWindow(QMainWindow):
         self.label_last_message_price.setText(f"Last Message token: {last_price:.4f} / {self.price:.4f}")
         print(f"Last token: {last_token_count} / {self.token_count}  "
               f"|| Last Price: {last_price:.4f} / {self.price:.4f}")
+        print()
 
 
 # create the application
