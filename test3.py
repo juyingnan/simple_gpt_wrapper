@@ -328,7 +328,7 @@ class MainWindow(QMainWindow):
         self.chat_display.append("\n--------\n")
 
         # calculate token and price
-        last_token_count = self.calculate_token2(current_prompt, response.choices[0].text)
+        last_token_count = self.calculate_token2(current_prompt, ai_response)
         last_price = self.calculate_prices(last_token_count)
 
         # update price message
