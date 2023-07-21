@@ -4,7 +4,7 @@
   "api_version": "",
   "api_key": "",
   "openai_key": "",
-  "default_model": "gpt-35-turbo",
+  "default_model": "gpt-35-16k",
   "default_callback_num": 3,
   "temperature": 0.90,
   "model_names": [
