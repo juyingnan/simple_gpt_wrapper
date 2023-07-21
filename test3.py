@@ -1,5 +1,6 @@
 import sys
 import json
+from itertools import chain
 import openai
 import tiktoken
 from PyQt5.QtWidgets import QWidget, QApplication, QMainWindow, QPushButton, QVBoxLayout, QHBoxLayout, QTextEdit, \
@@ -16,29 +17,26 @@ def read_config_file(config_file_path):
         return json.load(f)
 
 
+def read_credential_information(credential_name):
+    openai.api_base = credential_data[credential_name]['endpoint']
+    openai.api_version = credential_data[credential_name]['api_version']
+    openai.api_key = credential_data[credential_name]['api_key']
+    # openai_key = credential_data[credential_name]['openai_key']
+
+
 config_data = read_config_file('config.json')
 credential_data = read_config_file('credential.json')
 openai.api_type = config_data['api_type']
-openai.api_base = credential_data['endpoint']
-openai.api_version = credential_data['api_version']
-openai.api_key = credential_data['api_key']
-# openai_key = credential_data['openai_key']
 default_model = config_data['default_model']
 default_callback_num = config_data['default_callback_num']
 model_names = config_data['model_names']
 model_prices = config_data['model_prices']
 model_types = config_data['model_types']
 default_temperature = config_data['temperature']
+model_credential_name = config_data['credential_name'][default_model]
 
-
-# defining a function to create the prompt from the system message and the messages
-def create_prompt(system_message, messages):
-    prompt = system_message
-    message_template = "\n<|im_start|>{}\n{}\n<|im_end|>"
-    for message in messages:
-        prompt += message_template.format(message['sender'], message['text'])
-    prompt += "\n<|im_start|>assistant\n"
-    return prompt
+# reading credential info
+read_credential_information(model_credential_name)
 
 
 # build an input text box which uses enter to send / shift+enter to change line
@@ -69,9 +67,7 @@ class MainWindow(QMainWindow):
         self.callback_num = default_callback_num
         self.temperature = default_temperature
         # defining the system message
-        self.system_message_template = "<|im_start|>system\n{}\n<|im_end|>"
         self.system_message_content = "You are an AI assistant that helps people find information."
-        self.system_message_instance = self.system_message_template.format(self.system_message_content)
         self.prefix_message = ""
         self.token_count = 0
         self.price = 0.0
@@ -231,6 +227,7 @@ class MainWindow(QMainWindow):
     def on_model_selection_activated(self, text):
         # call the selected GPT model based on the user's selection
         self.model = text
+        read_credential_information(config_data['credential_name'][self.model])
         self.model_type = model_types[self.model] if self.model in model_types else self.model
         self.model_price = model_prices[self.model]
         self.append_message(f"Current model changed to: {self.model} | Price: ${self.model_price} / 1000 tokens")
@@ -256,7 +253,6 @@ class MainWindow(QMainWindow):
 
     def update_system_message(self):
         self.system_message_content = self.textbox_system_message.text()
-        self.system_message_instance = self.system_message_template.format(self.system_message_content)
         self.chat_display.append(f'System message updated to: \n"{self.system_message_content}"')
 
     def update_prefix_message(self):
@@ -297,38 +293,42 @@ class MainWindow(QMainWindow):
         self.append_message("You: " + user_input, self.user_input_color)
 
         # add the user message to the messages list
-        self.messages.append({"sender": "user", "text": user_input})
+        self.messages.append({"role": "user", "content": user_input})
         print(f"Q: ", user_input.replace('\n', ''))
 
         # generate the AI response
-        current_prompt = create_prompt(self.system_message_instance,
-                                       self.messages if len(self.messages) < (self.callback_num * 2 + 1)
-                                       else self.messages[-(self.callback_num * 2 + 1):])
-        print(f"PROMPT: ", current_prompt.replace('\n', ''))
-        response = openai.Completion.create(
+        current_messages = self.messages if len(self.messages) < (self.callback_num * 2 + 1) else \
+            self.messages[-(self.callback_num * 2 + 1):]
+        current_messages.insert(0, {"role": "system", "content": self.system_message_content})
+
+        print(f"PROMPT: ", current_messages)
+        response = openai.ChatCompletion.create(
             engine=self.model,
-            prompt=current_prompt,
+            messages=current_messages,
             temperature=self.temperature,
-            max_tokens=1000,
+            max_tokens=5000,
             top_p=0.95,
             frequency_penalty=0,
             presence_penalty=0,
             stop=["<|im_end|>"])
 
-        ai_response = response.choices[0].text.strip()
-        print(f"A: ", ai_response.replace('\n', ''))
+        ai_response = response.choices[0].message.content.strip()
+        print(f"A: ", ai_response)  # .replace('\n', ''))
 
         # add the AI response to the messages list
-        self.messages.append({"sender": "assistant", "text": ai_response})
+        self.messages.append({"role": "assistant", "content": ai_response})
         self.trim_message_list(self.callback_num * 2 * 10)  # prevent a too long list
         print("message length: ", len(self.messages), "\thistory: ", self.callback_num)
 
         # update the chat display widget
+        self.append_message("\n")
         self.append_message("AI: " + ai_response, self.ai_response_color)
         self.append_message("\n--------\n", self.system_message_color)
 
         # calculate token and price
-        last_token_count = self.calculate_token2(current_prompt, ai_response)
+        message_str = ' '.join(
+            str(item) for message in current_messages for item in chain(message.keys(), message.values()))
+        last_token_count = self.calculate_token2(message_str, ai_response)
         last_price = self.calculate_prices(last_token_count)
 
         # update price message

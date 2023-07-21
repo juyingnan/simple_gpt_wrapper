@@ -11,15 +11,25 @@
     "gpt-35-turbo",
     "text-davinci-003",
     "text-curie-001",
-    "code-cushman-001"
+    "code-cushman-001",
+    "gpt-35-16k"
   ],
   "model_prices": {
     "gpt-35-turbo": 0.002,
     "text-davinci-003": 0.02,
     "text-curie-001": 0.002,
-    "code-cushman-001": 0.024
+    "code-cushman-001": 0.024,
+    "gpt-35-16k": 0.002
   },
   "model_types": {
-    "gpt-35-turbo": "gpt-3.5-turbo"
+    "gpt-35-turbo": "gpt-3.5-turbo",
+    "gpt-35-16k": "gpt-3.5-turbo"
+  },
+  "credential_name": {
+    "gpt-35-turbo": "Mocking-Bird-South-US",
+    "text-davinci-003": "Mocking-Bird-South-US",
+    "text-curie-001": "Mocking-Bird-South-US",
+    "code-cushman-001": "Mocking-Bird-South-US",
+    "gpt-35-16k": "Mocking-Bird-East-US"
   }
 }
