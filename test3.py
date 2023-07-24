@@ -5,7 +5,7 @@ import openai
 import tiktoken
 from PyQt5.QtWidgets import QWidget, QApplication, QMainWindow, QPushButton, QVBoxLayout, QHBoxLayout, QTextEdit, \
     QSplitter, QComboBox, QLabel, QSlider, QFrame, QLineEdit
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtGui import QColor, QFont, QTextCursor
 from PyQt5.QtCore import Qt, pyqtSignal
 
 
@@ -22,6 +22,29 @@ def read_credential_information(credential_name):
     openai.api_version = credential_data[credential_name]['api_version']
     openai.api_key = credential_data[credential_name]['api_key']
     # openai_key = credential_data[credential_name]['openai_key']
+
+
+def num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613"):
+    """Returns the number of tokens used by a list of messages."""
+    try:
+        encoding = tiktoken.encoding_for_model(model)
+    except KeyError:
+        encoding = tiktoken.get_encoding("cl100k_base")
+    if model == "gpt-3.5-turbo-0613":  # note: future models may deviate from this
+        num_tokens = 0
+        for message in messages:
+            num_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
+            for key, value in message.items():
+                num_tokens += len(encoding.encode(value))
+                if key == "name":  # if there's a name, the role is omitted
+                    num_tokens += -1  # role is always required and always 1 token
+        num_tokens += 2  # every reply is primed with <im_start>assistant
+        return num_tokens
+    else:
+        raise NotImplementedError(f"""
+        num_tokens_from_messages() is not presently implemented for model {model}.
+        See https://github.com/openai/openai-python/blob/main/chatml.md 
+        for information on how messages are converted to tokens.""")
 
 
 config_data = read_config_file('config.json')
@@ -218,6 +241,11 @@ class MainWindow(QMainWindow):
         self.messages = []
 
     def append_message(self, message, color=None):
+        # Move the cursor to the end
+        cursor = self.chat_display.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        self.chat_display.setTextCursor(cursor)
+
         if color is None:
             color = self.system_message_color
         self.chat_display.setTextColor(color)
@@ -306,7 +334,7 @@ class MainWindow(QMainWindow):
             engine=self.model,
             messages=current_messages,
             temperature=self.temperature,
-            max_tokens=5000,
+            max_tokens=5000 if self.model.endswith("k") else 1000,
             top_p=0.95,
             frequency_penalty=0,
             presence_penalty=0,
@@ -326,9 +354,7 @@ class MainWindow(QMainWindow):
         self.append_message("\n--------\n", self.system_message_color)
 
         # calculate token and price
-        message_str = ' '.join(
-            str(item) for message in current_messages for item in chain(message.keys(), message.values()))
-        last_token_count = self.calculate_token2(message_str, ai_response)
+        last_token_count = num_tokens_from_messages(current_messages, "gpt-3.5-turbo-0613")
         last_price = self.calculate_prices(last_token_count)
 
         # update price message
