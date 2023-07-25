@@ -354,7 +354,8 @@ class MainWindow(QMainWindow):
         self.append_message("\n--------\n", self.system_message_color)
 
         # calculate token and price
-        last_token_count = num_tokens_from_messages(current_messages, "gpt-3.5-turbo-0613")
+        # last_token_count = num_tokens_from_messages(current_messages, "gpt-3.5-turbo-0613")
+        last_token_count = response.usage["total_tokens"]
         last_price = self.calculate_prices(last_token_count)
 
         # update price message

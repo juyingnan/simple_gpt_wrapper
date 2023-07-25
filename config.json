@@ -19,7 +19,7 @@
     "text-davinci-003": 0.02,
     "text-curie-001": 0.002,
     "code-cushman-001": 0.024,
-    "gpt-35-16k": 0.002
+    "gpt-35-16k": 0.004
   },
   "model_types": {
     "gpt-35-turbo": "gpt-3.5-turbo",
