@@ -50,11 +50,11 @@ def num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613"):
 config_data = read_config_file('config.json')
 credential_data = read_config_file('credential.json')
 openai.api_type = config_data['api_type']
-default_model = config_data['default_model']
 default_callback_num = config_data['default_callback_num']
 model_names = config_data['model_names']
 model_prices = config_data['model_prices']
 model_types = config_data['model_types']
+default_model = model_names[0]
 default_temperature = config_data['temperature']
 model_credential_name = config_data['credential_name'][default_model]
 

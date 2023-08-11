@@ -4,15 +4,14 @@
   "api_version": "",
   "api_key": "",
   "openai_key": "",
-  "default_model": "gpt-35-16k",
   "default_callback_num": 3,
   "temperature": 0.90,
   "model_names": [
+    "gpt-35-16k",
     "gpt-35-turbo",
     "text-davinci-003",
     "text-curie-001",
-    "code-cushman-001",
-    "gpt-35-16k"
+    "code-cushman-001"
   ],
   "model_prices": {
     "gpt-35-turbo": 0.002,
