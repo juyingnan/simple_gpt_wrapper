@@ -1,6 +1,6 @@
 import sys
 import json
-import openai
+from openai import AzureOpenAI
 import tiktoken
 from PyQt5.QtWidgets import QWidget, QApplication, QMainWindow, QPushButton, QVBoxLayout, QHBoxLayout, QTextEdit, \
     QSplitter, QComboBox, QLabel, QSlider, QFrame, QLineEdit
@@ -17,13 +17,12 @@ def read_config_file(config_file_path):
 
 
 def read_credential_information(credential_name):
-    openai.api_base = credential_data[credential_name]['endpoint']
-    openai.api_version = credential_data[credential_name]['api_version']
-    openai.api_key = credential_data[credential_name]['api_key']
-    # openai_key = credential_data[credential_name]['openai_key']
+    return AzureOpenAI(api_version=credential_data[credential_name]['api_version'],
+                       azure_endpoint=credential_data[credential_name]['endpoint'],
+                       api_key=credential_data[credential_name]['api_key'])
 
 
-def num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613"):
+def num_tokens_from_messages(messages, model="gpt-4"):
     """Return the number of tokens used by a list of messages."""
     try:
         encoding = tiktoken.encoding_for_model(model)
@@ -68,7 +67,6 @@ def num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613"):
 
 config_data = read_config_file('config.json')
 credential_data = read_config_file('credential.json')
-openai.api_type = config_data['api_type']
 default_callback_num = config_data['default_callback_num']
 model_names = config_data['model_names']
 model_prices = config_data['model_prices']
@@ -78,7 +76,7 @@ default_temperature = config_data['temperature']
 model_credential_name = config_data['credential_name'][default_model]
 
 # reading credential info
-read_credential_information(model_credential_name)
+client = read_credential_information(model_credential_name)
 
 
 # build an input text box which uses enter to send / shift+enter to change line
@@ -349,15 +347,14 @@ class MainWindow(QMainWindow):
         current_messages.insert(0, {"role": "system", "content": self.system_message_content})
 
         print(f"PROMPT: ", current_messages)
-        response = openai.ChatCompletion.create(
-            engine=self.model,
-            messages=current_messages,
-            temperature=self.temperature,
-            max_tokens=5000 if self.model.endswith("k") else 1000,
-            top_p=0.95,
-            frequency_penalty=0,
-            presence_penalty=0,
-            stop=["<|im_end|>"])
+        response = client.chat.completions.create(model=self.model,
+                                                  messages=current_messages,
+                                                  temperature=self.temperature,
+                                                  max_tokens=5000 if self.model.endswith("k") else 1000,
+                                                  top_p=0.95,
+                                                  frequency_penalty=0,
+                                                  presence_penalty=0,
+                                                  stop=["<|im_end|>"])
 
         ai_response = response.choices[0].message.content.strip()
         print(f"A: ", ai_response)  # .replace('\n', ''))
@@ -374,7 +371,7 @@ class MainWindow(QMainWindow):
 
         # calculate token and price
         # last_token_count = num_tokens_from_messages(current_messages, "gpt-3.5-turbo-0613")
-        last_token_count = response.usage["total_tokens"]
+        last_token_count = response.usage.total_tokens
         last_price = self.calculate_prices(last_token_count)
 
         # update price message
