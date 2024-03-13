@@ -350,7 +350,7 @@ class MainWindow(QMainWindow):
         response = client.chat.completions.create(model=self.model,
                                                   messages=current_messages,
                                                   temperature=self.temperature,
-                                                  max_tokens=5000 if self.model.endswith("k") else 1000,
+                                                  max_tokens=32000 if self.model.endswith("k") else 8000,
                                                   top_p=0.95,
                                                   frequency_penalty=0,
                                                   presence_penalty=0,
