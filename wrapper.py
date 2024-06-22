@@ -36,6 +36,7 @@ def num_tokens_from_messages(messages, model="gpt-4"):
         "gpt-4-32k-0314",
         "gpt-4-0613",
         "gpt-4-32k-0613",
+        "gpt-4o",
     }:
         tokens_per_message = 3
         tokens_per_name = 1
@@ -350,7 +351,7 @@ class MainWindow(QMainWindow):
         response = client.chat.completions.create(model=self.model,
                                                   messages=current_messages,
                                                   temperature=self.temperature,
-                                                  max_tokens=32000 if self.model.endswith("k") else 8000,
+                                                  max_tokens=32000 if self.model.endswith("k") else 4000,
                                                   top_p=0.95,
                                                   frequency_penalty=0,
                                                   presence_penalty=0,
