@@ -4,7 +4,7 @@
   "api_version": "",
   "api_key": "",
   "openai_key": "",
-  "default_callback_num": 3,
+  "default_callback_num": 10,
   "temperature": 0.90,
   "model_names": [
     "gpt-4o"
