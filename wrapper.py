@@ -70,7 +70,8 @@ config_data = read_config_file('config.json')
 credential_data = read_config_file('credential.json')
 default_callback_num = config_data['default_callback_num']
 model_names = config_data['model_names']
-model_prices = config_data['model_prices']
+model_prices_input = config_data['model_prices_input']
+model_prices_output = config_data['model_prices_output']
 model_types = config_data['model_types']
 default_model = model_names[0]
 default_temperature = config_data['temperature']
@@ -103,7 +104,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         # initialize the parameters
         self.model = default_model
-        self.model_price = model_prices[self.model]
+        self.model_price_input = model_prices_input[self.model]
+        self.model_price_output = model_prices_output[self.model]
         self.model_type = model_types[self.model] if self.model in model_types else self.model
         self.callback_num = default_callback_num
         self.temperature = default_temperature
@@ -127,7 +129,8 @@ class MainWindow(QMainWindow):
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
         self.chat_display.setFont(font)
-        self.chat_display.append(f"Default model is: {self.model} | Price: ${self.model_price} / 1000 tokens")
+        self.chat_display.append(f"Default model is: {self.model} || Price: ${self.model_price_input}|"
+                                 f"{self.model_price_output} / 1000 tokens")
 
         # create the user input widget
         self.user_input = MyTextEdit()
@@ -275,8 +278,10 @@ class MainWindow(QMainWindow):
         self.model = text
         read_credential_information(config_data['credential_name'][self.model])
         self.model_type = model_types[self.model] if self.model in model_types else self.model
-        self.model_price = model_prices[self.model]
-        self.append_message(f"Current model changed to: {self.model} | Price: ${self.model_price} / 1000 tokens")
+        self.model_price_input = model_prices_input[self.model]
+        self.model_price_output = model_prices_output[self.model]
+        self.append_message(f"Current model changed to: {self.model} || Price: ${self.model_price_input}|"
+                            f"{self.model_price_output} / 1000 tokens")
 
     # dropdown menu activated function - model selection
     def on_history_length_selection_activated(self, text):
@@ -323,8 +328,8 @@ class MainWindow(QMainWindow):
         generated_tokens = len(encoding.encode(response_text))
         return prompt_tokens + generated_tokens
 
-    def calculate_prices(self, token_count):
-        return self.model_price * token_count / 1000.0
+    def calculate_prices(self, token_count_input, token_count_output):
+        return (self.model_price_input * token_count_input + self.model_price_output * token_count_output) / 1000.0
 
     # function to handle user input
     def on_user_input(self):
@@ -372,16 +377,16 @@ class MainWindow(QMainWindow):
 
         # calculate token and price
         # last_token_count = num_tokens_from_messages(current_messages, "gpt-3.5-turbo-0613")
-        last_token_count = response.usage.total_tokens
-        last_price = self.calculate_prices(last_token_count)
+        last_price = self.calculate_prices(response.usage.prompt_tokens, response.usage.completion_tokens)
 
         # update price message
-        self.token_count += last_token_count
+        self.token_count += response.usage.total_tokens
         self.price += last_price
-        self.label_last_message_token.setText(f"Last Message token: {last_token_count} / {self.token_count}")
-        self.label_last_message_price.setText(f"Last Message token: {last_price:.4f} / {self.price:.4f}")
-        print(f"Last token: {last_token_count} / {self.token_count}  "
-              f"|| Last Price: {last_price:.4f} / {self.price:.4f}")
+        self.label_last_message_token.setText(f"Last Message token: {response.usage.total_tokens} / {self.token_count}")
+        self.label_last_message_price.setText(f"Last Message price: {last_price:.4f} / {self.price:.4f}")
+        print(
+            f"Last token: {response.usage.prompt_tokens}|{response.usage.completion_tokens}|{response.usage.total_tokens} / {self.token_count}  "
+            f"|| Last Price: {last_price:.4f} / {self.price:.4f}")
         print()
 
 

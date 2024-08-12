@@ -9,14 +9,23 @@
   "model_names": [
     "gpt-4o"
   ],
-  "model_prices": {
+  "model_prices_input": {
     "gpt-35-turbo": 0.002,
     "text-davinci-003": 0.02,
     "text-curie-001": 0.002,
     "code-cushman-001": 0.024,
     "gpt-35-16k": 0.004,
-    "gpt-4": 0.02,
-    "gpt-4o": 0.02
+    "gpt-4": 0.005,
+    "gpt-4o": 0.005
+  },
+  "model_prices_output": {
+    "gpt-35-turbo": 0.002,
+    "text-davinci-003": 0.02,
+    "text-curie-001": 0.002,
+    "code-cushman-001": 0.024,
+    "gpt-35-16k": 0.004,
+    "gpt-4": 0.015,
+    "gpt-4o": 0.015
   },
   "model_types": {
     "gpt-35-turbo": "gpt-3.5-turbo",
